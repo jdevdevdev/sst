@@ -1,5 +1,11 @@
 # @serverless-stack/cli2
 
+## 2.5.4
+
+### Patch Changes
+
+- [#2780](https://github.com/serverless-stack/sst/pull/2780) [`ea7e565fe`](https://github.com/serverless-stack/sst/commit/ea7e565fee7c7b8d08eb08339f1a0d15636132cd) Thanks [@Bhavikpatel576](https://github.com/Bhavikpatel576)! - Disable Introspection in GraphQL Helix
+
 ## 2.5.3
 
 ### Patch Changes
