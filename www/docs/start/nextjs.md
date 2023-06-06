@@ -1,8 +1,7 @@
 ---
-id: nextjs
 sidebar_label: Next.js
 title: Use Next.js with SST
-description: "Create and deploy a Next.js app to AWS with SST."
+description: "Create and deploy a Next.js app to AWS with SST and OpenNext."
 ---
 
 import config from "../../config";
@@ -12,7 +11,7 @@ import MultiPackagerCode from "@site/src/components/MultiPackagerCode";
 
 <HeadlineText>
 
-Create and deploy a Next.js app to AWS with SST.
+Create and deploy a Next.js app to AWS with SST and [OpenNext](https://open-next.js.org).
 
 </HeadlineText>
 
@@ -58,6 +57,7 @@ Now initialize SST in your project root.
 <TabItem value="npm">
 
 ```bash
+cd my-app
 npx create-sst@latest
 ```
 
@@ -65,6 +65,7 @@ npx create-sst@latest
 <TabItem value="yarn">
 
 ```bash
+cd my-app
 yarn create sst
 ```
 
@@ -72,6 +73,7 @@ yarn create sst
 <TabItem value="pnpm">
 
 ```bash
+cd my-app
 pnpm create sst
 ```
 
@@ -130,9 +132,7 @@ Let's add a file upload feature to our Next.js app.
 Add an S3 bucket to your `sst.config.ts`.
 
 ```ts title="sst.config.ts"
-const bucket = new Bucket(stack, "public", {
-  cors: true,
-});
+const bucket = new Bucket(stack, "public");
 ```
 
 Bind it to your Next.js app.
@@ -147,9 +147,9 @@ const site = new NextjsSite(stack, "site", {
 
 #### Generate a presigned URL
 
-To upload a file to S3 we'll generate a presigned URL. Add this to `pages/index.ts`.
+To upload a file to S3 we'll generate a presigned URL. Add this to `pages/index.tsx`.
 
-```ts title="pages/index.ts" {5}
+```ts title="pages/index.tsx" {5}
 export async function getServerSideProps() {
   const command = new PutObjectCommand({
     ACL: "public-read",
@@ -284,6 +284,10 @@ pnpm sst deploy --stage prod
 
 </TabItem>
 </MultiPackagerCode>
+
+:::note
+The `sst deploy` command internally uses OpenNext to build your app.
+:::
 
 ![Next.js app deployed to AWS with SST](/img/start/nextjs-app-deployed-to-aws-with-sst.png)
 

@@ -31,7 +31,7 @@ import {
   CustomResourceProviderRuntime,
   CustomResource,
   Aspects,
-} from "aws-cdk-lib";
+} from "aws-cdk-lib/core";
 import { CfnFunction, ILayerVersion } from "aws-cdk-lib/aws-lambda";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import { ArnPrincipal, PolicyStatement } from "aws-cdk-lib/aws-iam";
@@ -265,6 +265,7 @@ export class App extends CDKApp {
     this.codegenTypes();
     this.createBindingSsmParameters();
     this.removeGovCloudUnsupportedResourceProperties();
+    const { config } = useProject();
 
     for (const child of this.node.children) {
       if (isStackConstruct(child)) {
@@ -278,6 +279,7 @@ export class App extends CDKApp {
 
         // Stack names need to be parameterized with the stage name
         if (
+          config.advanced?.disableParameterizedStackNameCheck !== true &&
           !child.stackName.startsWith(`${this.stage}-`) &&
           !child.stackName.endsWith(`-${this.stage}`) &&
           child.stackName.indexOf(`-${this.stage}-`) === -1

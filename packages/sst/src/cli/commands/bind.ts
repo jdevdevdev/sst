@@ -7,18 +7,14 @@ import type {
   StaticSiteMetadata,
 } from "../../constructs/Metadata.js";
 
-const SSR_SITE_CONFIG = {
-  NextjsSite: "next.config",
-  AstroSite: "astro.config",
-  RemixSite: "remix.config",
-  SolidStartSite: "vite.config",
-  SlsNextjsSite: "next.config",
-};
 type BIND_REASON =
   | "init"
   | "metadata_updated"
   | "secrets_updated"
   | "iam_expired";
+
+class MetadataNotFoundError extends Error {}
+class MetadataOutdatedError extends Error {}
 
 export const bind = (program: Program) =>
   program
@@ -27,14 +23,24 @@ export const bind = (program: Program) =>
       "Bind your app's resources to a command",
       (yargs) =>
         yargs
+          .option("site", {
+            type: "boolean",
+            describe: "Run in site mode",
+          })
+          .option("script", {
+            type: "boolean",
+            describe: "Run in script mode",
+          })
           .array("command")
-          .example(`sst bind "vitest run"`, "Bind your resources to your tests")
+          .example(`sst bind vitest run`, "Bind resources to your tests")
+          .example(`sst bind next dev`, "Bind resources to your site")
           .example(
-            `sst bind "tsx scripts/myscript.ts"`,
-            "Bind your resources to a script"
+            `sst bind --script next build`,
+            "Bind resources to your site before deployment"
           ),
       async (args) => {
         const { spawn } = await import("child_process");
+        const kill = await import("tree-kill");
         const { useProject } = await import("../../project.js");
         const { useBus } = await import("../../bus.js");
         const { useIOT } = await import("../../iot.js");
@@ -55,31 +61,32 @@ export const bind = (program: Program) =>
         const bus = useBus();
         const project = useProject();
         const command = args.command?.join(" ");
-        const isSsrSite = await isRunningInSsrSite();
+        const isSite = await isRunningInSite();
+        const mode = args.site ? "site" : args.script ? "script" : "auto";
         let p: ReturnType<typeof spawn> | undefined;
         let timer: ReturnType<typeof setTimeout> | undefined;
         let siteConfigCache:
-          | Awaited<ReturnType<typeof parseSiteConfig>>
+          | Awaited<ReturnType<typeof parseSiteMetadata>>
           | undefined;
 
         // Handle missing command
         if (!command) {
           throw new VisibleError(
             `Command is required, e.g. sst bind ${
-              isSsrSite ? "next dev" : "env"
+              isSite ? "next dev" : "vitest run"
             }`
           );
         }
 
         // Bind script
-        const initialMetadata = await getSiteMetadata();
-        if (!initialMetadata && !isSsrSite) {
+        if (args.script || (!isSite && !args.site)) {
           Logger.debug("Running in script mode.");
           return await bindScript();
         }
 
         // Bind site
         await bindSite("init");
+
         bus.subscribe("stacks.metadata.updated", () =>
           bindSite("metadata_updated")
         );
@@ -88,8 +95,7 @@ export const bind = (program: Program) =>
         );
         bus.subscribe("config.secret.updated", (payload) => {
           const secretName = payload.properties.name;
-          if (siteConfigCache?.secrets === undefined) return;
-          if (!siteConfigCache.secrets.includes(secretName)) return;
+          if (!(siteConfigCache?.secrets || []).includes(secretName)) return;
 
           Colors.line(
             `\n`,
@@ -98,34 +104,78 @@ export const bind = (program: Program) =>
           bindSite("secrets_updated");
         });
 
-        async function isRunningInSsrSite() {
+        async function isRunningInSite() {
           const { existsAsync } = await import("../../util/fs.js");
           const { readFile } = await import("fs/promises");
+          const SITE_CONFIGS = [
+            { file: "next.config", multiExtension: true },
+            { file: "astro.config", multiExtension: true },
+            { file: "remix.config", multiExtension: true },
+            { file: "svelte.config", multiExtension: true },
+            { file: "gatsby-config", multiExtension: true },
+            { file: "angular.json" },
+            { file: "ember-cli-build.js" },
+            {
+              file: "vite.config",
+              multiExtension: true,
+              match: /solid-start|plugin-vue|plugin-react|@preact\/preset-vite/,
+            },
+            { file: "package.json", match: /react-scripts/ }, // CRA
+            { file: "index.html" }, // plain HTML
+          ];
           const results = await Promise.all(
-            Object.values(SSR_SITE_CONFIG)
-              .map((config) =>
-                [".js", ".cjs", ".mjs", ".ts"].map(async (ext) => {
-                  const exists = await existsAsync(`${config}${ext}`);
-                  if (exists && config === "vite.config") {
-                    const content = await readFile(`${config}${ext}`);
-                    return content.includes("solid-start");
-                  }
-                  return exists;
-                })
-              )
-              .flat()
+            SITE_CONFIGS.map((site) => {
+              const files = site.multiExtension
+                ? [".js", ".cjs", ".mjs", ".ts"].map(
+                    (ext) => `${site.file}${ext}`
+                  )
+                : [site.file];
+              return files.map(async (file) => {
+                const exists = await existsAsync(file);
+                if (!exists) return false;
+
+                if (site.match) {
+                  const content = await readFile(file);
+                  return content.toString().match(site.match);
+                }
+
+                return true;
+              });
+            }).flat()
           );
+
           return results.some(Boolean);
         }
 
         async function bindSite(reason: BIND_REASON) {
           // Get metadata
-          const siteMetadata = (
-            reason === "init"
-              ? initialMetadata
-              : await getSiteMetadataUntilAvailable()
-          )!;
-          const siteConfig = await parseSiteConfig(siteMetadata);
+          let siteMetadata;
+          try {
+            siteMetadata = await getSiteMetadata();
+          } catch (e: any) {
+            // unhandled error
+            if (
+              !(e instanceof MetadataOutdatedError) &&
+              !(e instanceof MetadataNotFoundError)
+            ) {
+              throw e;
+            }
+
+            // ignore error if previously failed to fetch metadata
+            if (reason !== "init") return;
+
+            // run in script mode
+            Colors.line(
+              Colors.warning(
+                e instanceof MetadataOutdatedError
+                  ? "Warning: This was deployed with an old version of SST. Run `sst dev` or `sst deploy` to update."
+                  : "Warning: The site has not been deployed. Some resources might not be available."
+              )
+            );
+            return await bindScript();
+          }
+
+          const siteConfig = await parseSiteMetadata(siteMetadata!);
 
           // Handle rebind due to metadata updated
           if (reason === "metadata_updated") {
@@ -139,46 +189,71 @@ export const bind = (program: Program) =>
           siteConfigCache = siteConfig;
 
           // Assume function's role credentials
-          if (siteConfig.role) {
-            const credentials = await assumeSsrRole(siteConfig.role);
-            if (credentials) {
-              // refresh crecentials 1 minute before expiration
-              const expireAt = credentials.Expiration!.getTime() - 60000;
-              clearTimeout(timer);
-              timer = setTimeout(() => {
-                Colors.line(
-                  `\n`,
-                  `Your AWS session is about to expire. Creating a new session and restarting \`${command}\`...`
-                );
-                bindSite("iam_expired");
-              }, expireAt - Date.now());
-
-              runCommand({
-                ...siteConfig.envs,
-                AWS_ACCESS_KEY_ID: credentials!.AccessKeyId,
-                AWS_SECRET_ACCESS_KEY: credentials!.SecretAccessKey,
-                AWS_SESSION_TOKEN: credentials!.SessionToken,
-              });
-              return;
-            }
-          }
-
           // Fallback to use local IAM credentials
-          runCommand({
+          const credentials =
+            (siteConfig.role &&
+              (await getLiveIamCredentials(siteConfig.role))) ||
+            (await getLocalIamCredentials());
+          await runCommand({
             ...siteConfig.envs,
-            ...(await localIamCredentials()),
+            ...credentials,
           });
         }
 
         async function bindScript() {
           const { Config } = await import("../../config.js");
-          runCommand({
+          await runCommand({
             ...(await Config.env()),
-            ...(await localIamCredentials()),
+            ...(await getLocalIamCredentials()),
           });
         }
 
-        async function parseSiteConfig(
+        async function getSiteMetadata() {
+          const { metadata } = await import("../../stacks/metadata.js");
+          const metadataData = await metadata();
+          const data = Object.values(metadataData)
+            .flat()
+            .filter(
+              (
+                c
+              ): c is
+                | SsrSiteMetadata
+                | StaticSiteMetadata
+                | SlsNextjsMetadata =>
+                [
+                  "StaticSite",
+                  "NextjsSite",
+                  "AstroSite",
+                  "RemixSite",
+                  "SolidStartSite",
+                  "SvelteKitSite",
+                  "SlsNextjsSite",
+                ].includes(c.type)
+            )
+            .find((c) => {
+              // Handle metadata prior to SST v2.3.0 doesn't have path
+              const isSsr =
+                c.type !== "StaticSite" && c.type !== "SlsNextjsSite";
+              if (
+                !c.data.path ||
+                (isSsr && !c.data.server) ||
+                (!isSsr && !c.data.environment)
+              ) {
+                throw new MetadataOutdatedError();
+              }
+
+              return (
+                path.resolve(project.paths.root, c.data.path) === process.cwd()
+              );
+            });
+
+          if (!data) {
+            throw new MetadataNotFoundError();
+          }
+          return data;
+        }
+
+        async function parseSiteMetadata(
           metadata: SlsNextjsMetadata | StaticSiteMetadata | SsrSiteMetadata
         ) {
           const { LambdaClient, GetFunctionCommand } = await import(
@@ -209,62 +284,79 @@ export const bind = (program: Program) =>
           };
         }
 
-        async function getSiteMetadataUntilAvailable() {
-          const { createSpinner } = await import("../spinner.js");
-          const spinner = createSpinner({});
-          while (true) {
-            const data = await getSiteMetadata();
+        async function getLiveIamCredentials(roleArn: string) {
+          const credentials = await assumeSsrRole(roleArn);
+          if (!credentials) return;
 
-            // Handle site metadata not found
-            if (!data) {
-              spinner.start(
-                //"Waiting for SST to start for the first time. Run `sst dev`..."
-                //"Run `sst dev` for the first time. Waiting..."
-                "Make sure `sst dev` is running..."
-              );
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              continue;
-            }
+          // refresh crecentials 1 minute before expiration
+          const expireAt = credentials.Expiration!.getTime() - 60000;
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            Colors.line(
+              `\n`,
+              `Your AWS session is about to expire. Creating a new session and restarting \`${command}\`...`
+            );
+            bindSite("iam_expired");
+          }, expireAt - Date.now());
 
-            // Handle site metadata is old
-            const isBindSupported =
-              data.type !== "StaticSite" && data.type !== "SlsNextjsSite";
-            if (
-              (isBindSupported && !data.data.server) ||
-              (!isBindSupported && !data.data.environment)
-            ) {
-              spinner.start(
-                "This was deployed with an old version of SST. Make sure to restart `sst dev`..."
-              );
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              continue;
-            }
-            spinner.isSpinning && spinner.stop().clear();
-
-            return data;
-          }
+          return {
+            AWS_ACCESS_KEY_ID: credentials!.AccessKeyId,
+            AWS_SECRET_ACCESS_KEY: credentials!.SecretAccessKey,
+            AWS_SESSION_TOKEN: credentials!.SessionToken,
+          };
         }
 
-        async function getSiteMetadata() {
-          const { metadata } = await import("../../stacks/metadata.js");
-          const metadataData = await metadata();
-          return Object.values(metadataData)
-            .flat()
-            .filter(
-              (
-                c
-              ): c is
-                | SsrSiteMetadata
-                | StaticSiteMetadata
-                | SlsNextjsMetadata => Boolean(c)
-            )
-            .filter(
-              (c) => c.type === "StaticSite" || Boolean(SSR_SITE_CONFIG[c.type])
-            )
-            .find(
-              (c) =>
-                path.resolve(project.paths.root, c.data.path) === process.cwd()
-            );
+        async function getLocalIamCredentials() {
+          const { useAWSCredentials } = await import("../../credentials.js");
+          const credentials = await useAWSCredentials();
+          return {
+            AWS_ACCESS_KEY_ID: credentials.accessKeyId,
+            AWS_SECRET_ACCESS_KEY: credentials.secretAccessKey,
+            AWS_SESSION_TOKEN: credentials.sessionToken,
+          };
+        }
+
+        async function runCommand(envs: Record<string, string | undefined>) {
+          Colors.gap();
+
+          if (p) {
+            p.removeAllListeners("exit");
+            // Note: calling p.kill() does not kill child processes. And in the
+            // cases of Next.js and CRA, servers are child processes. Need to
+            // kill the entire process tree to free up port ie. 3000.
+            await new Promise((resolve, reject) => {
+              kill.default(p?.pid!, (error) => {
+                if (error) {
+                  return reject(error);
+                }
+                resolve(true);
+              });
+            });
+          }
+
+          p = spawn(command!, {
+            env: {
+              ...process.env,
+              ...envs,
+              AWS_REGION: project.config.region,
+            },
+            stdio: "inherit",
+            shell: true,
+          });
+
+          p.on("exit", (code) => {
+            process.exit(code || 0);
+          });
+        }
+
+        function areEnvsSame(
+          envs1: Record<string, string | undefined>,
+          envs2: Record<string, string | undefined>
+        ) {
+          return (
+            Object.keys(envs1).length === Object.keys(envs2).length &&
+            Object.keys(envs1).every((key) => envs1[key] === envs2[key])
+          );
         }
 
         async function assumeSsrRole(roleArn: string) {
@@ -308,48 +400,6 @@ export const bind = (program: Program) =>
             "Using local IAM credentials since `sst dev` is not running."
           );
           Logger.debug(`Failed to assume ${roleArn}.`, err);
-        }
-
-        async function localIamCredentials() {
-          const { useAWSCredentials } = await import("../../credentials.js");
-          const credentials = await useAWSCredentials();
-          return {
-            AWS_ACCESS_KEY_ID: credentials.accessKeyId,
-            AWS_SECRET_ACCESS_KEY: credentials.secretAccessKey,
-            AWS_SESSION_TOKEN: credentials.sessionToken,
-          };
-        }
-
-        function runCommand(envs: Record<string, string | undefined>) {
-          Colors.gap();
-
-          if (p) {
-            p.kill();
-          }
-
-          p = spawn(command!, {
-            env: {
-              ...process.env,
-              ...envs,
-              AWS_REGION: project.config.region,
-            },
-            stdio: "inherit",
-            shell: true,
-          });
-
-          p.on("exit", (code) => {
-            process.exit(code || 0);
-          });
-        }
-
-        function areEnvsSame(
-          envs1: Record<string, string | undefined>,
-          envs2: Record<string, string | undefined>
-        ) {
-          return (
-            Object.keys(envs1).length === Object.keys(envs2).length &&
-            Object.keys(envs1).every((key) => envs1[key] === envs2[key])
-          );
         }
       }
     )

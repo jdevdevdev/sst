@@ -686,6 +686,10 @@ export interface ApiGraphQLRouteProps<AuthorizerKeys>
      * Commands to run after generating schema. Useful for code generation steps
      */
     commands?: string[];
+    /**
+     * List of packages that should be considered internal during schema generation
+     */
+    internalPackages?: string[];
   };
 }
 
@@ -699,7 +703,7 @@ export interface ApiGraphQLRouteProps<AuthorizerKeys>
  * @example
  *
  * ```ts
- * import { Api } from "@serverless-stack/resources";
+ * import { Api } from "sst/constructs";
  *
  * new Api(stack, "Api", {
  *   routes: {
@@ -974,6 +978,7 @@ export class Api<
               route: key,
               fn: getFunctionRef(data.function),
               schema: data.schema,
+              internalPackages: data.internalPackages,
               output: data.output,
               commands: data.commands,
             };
@@ -1475,12 +1480,14 @@ export class Api<
     );
     const data = this.routesData[routeKey];
     if (data.type === "function") {
+      data.function.addEnvironment("GRAPHQL_ENDPOINT", routeKey.split(" ")[1]);
       this.routesData[routeKey] = {
         ...data,
         type: "graphql",
         output: routeProps.pothos?.output,
         schema: routeProps.pothos?.schema,
         commands: routeProps.pothos?.commands,
+        internalPackages: routeProps.pothos?.internalPackages,
       };
     }
 

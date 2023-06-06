@@ -28,7 +28,7 @@ import useBaseUrl from "@docusaurus/useBaseUrl";
 
 <div className={styles.heading}>
   <h3>Pick Your Frontend</h3>
-  <p>Start with a Next.js, Remix, Astro, or Solid app and deploy it to AWS with SST.</p>
+  <p>Start with a Next.js, Svelte, Remix, Astro, or Solid app and deploy it to AWS with SST.</p>
 </div>
 
 <ul className={styles.features}>
@@ -39,7 +39,13 @@ import useBaseUrl from "@docusaurus/useBaseUrl";
     </a>
   </li>
   <li>
-    <a href={useBaseUrl("/constructs/RemixSite")}>
+    <a href={useBaseUrl("/start/svelte")}>
+      <h3><img src="/img/logos/svelte.svg" />Svelte</h3>
+      <p>Create and deploy a serverless SvelteKit app to AWS with SST.</p>
+    </a>
+  </li>
+  <li>
+    <a href={useBaseUrl("/start/remix")}>
       <h3><img src="/img/logos/remix.svg" />Remix</h3>
       <p>Create and deploy a serverless Remix app to AWS with SST.</p>
     </a>
@@ -51,7 +57,7 @@ import useBaseUrl from "@docusaurus/useBaseUrl";
     </a>
   </li>
   <li>
-    <a href={useBaseUrl("/constructs/SolidStartSite")}>
+    <a href={useBaseUrl("/start/solid")}>
       <h3><img src="/img/logos/solid.svg" />Solid</h3>
       <p>Create and deploy a serverless SolidStart app to AWS with SST.</p>
     </a>

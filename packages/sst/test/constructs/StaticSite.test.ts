@@ -9,6 +9,7 @@ import {
 } from "./helper";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import * as cf from "aws-cdk-lib/aws-cloudfront";
 import { Api, Stack, StaticSite } from "../../dist/constructs/";
@@ -925,6 +926,33 @@ test("constructor: cfDistribution props", async () => {
   });
 });
 
+test("constructor: cfDistribution is construct", async () => {
+  const stack = new Stack(await createApp(), "stack");
+  new StaticSite(stack, "Site", {
+    path: "test/constructs/site",
+    customDomain: "domain.com",
+    cdk: {
+      distribution: cloudfront.Distribution.fromDistributionAttributes(
+        stack,
+        "IDistribution",
+        {
+          distributionId: "frontend-distribution-id",
+          domainName: "domain.com",
+        }
+      ),
+    },
+  });
+  countResources(stack, "AWS::CloudFront::Distribution", 0);
+  countResources(stack, "Custom::CloudFrontInvalidator", 1);
+  hasResource(stack, "Custom::CloudFrontInvalidator", {
+    paths: ["/*"],
+  });
+  countResources(stack, "AWS::Route53::HostedZone", 1);
+  hasResource(stack, "AWS::Route53::HostedZone", {
+    Name: "domain.com.",
+  });
+});
+
 test("constructor: cfDistribution props override errorResponses", async () => {
   const stack = new Stack(await createApp(), "stack");
   new StaticSite(stack, "Site", {
@@ -1123,7 +1151,7 @@ test("constructor: sst deploy inactive stack", async () => {
   countResources(stack, "Custom::CloudFrontInvalidator", 0);
 });
 
-test("constructor: sst dev", async () => {
+test("constructor: sst dev: dev.url undefined", async () => {
   const app = await createApp({ mode: "dev" });
   const stack = new Stack(app, "stack");
   const site = new StaticSite(stack, "Site", {
@@ -1135,6 +1163,20 @@ test("constructor: sst dev", async () => {
   countResources(stack, "AWS::CloudFront::Distribution", 0);
   countResources(stack, "Custom::SSTBucketDeployment", 0);
   countResources(stack, "Custom::CloudFrontInvalidator", 0);
+});
+
+test("constructor: sst dev: dev.url string", async () => {
+  const app = await createApp({ mode: "dev" });
+  const stack = new Stack(app, "stack");
+  const site = new StaticSite(stack, "Site", {
+    path: "test/constructs/site",
+    dev: {
+      url: "localhost:3000",
+    },
+  });
+  expect(site.url).toBe("localhost:3000");
+  expect(site.customDomainUrl).toBeUndefined();
+  expect(site.cdk).toBeUndefined();
 });
 
 test("constructor: sst remove", async () => {

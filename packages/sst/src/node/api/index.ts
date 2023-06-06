@@ -1,22 +1,24 @@
-import { createProxy, getVariables } from "../util/index.js";
+import { createProxy } from "../util/index.js";
 import { Context } from "../../context/context.js";
-import { useEvent, Handler } from "../../context/handler.js";
+import {
+  useEvent,
+  Handler,
+  HandlerTypes,
+  useContextType,
+} from "../../context/handler.js";
 import { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 
 export interface ApiResources {}
 export interface AppSyncApiResources {}
 export interface ApiGatewayV1ApiResources {}
-export interface WebSocketApiResources {}
 
-export const Api = createProxy<ApiResources>("Api");
-export const AppSyncApi = createProxy<AppSyncApiResources>("AppSyncApi");
+export type ApiHandlerTypes = Extract<HandlerTypes, "api" | "ws">;
+
+export const Api = /* @__PURE__ */ createProxy<ApiResources>("Api");
+export const AppSyncApi =
+  /* @__PURE__ */ createProxy<AppSyncApiResources>("AppSyncApi");
 export const ApiGatewayV1Api =
-  createProxy<ApiGatewayV1ApiResources>("ApiGatewayV1Api");
-export const WebSocketApi = createProxy<WebSocketApiResources>("WebSocketApi");
-Object.assign(Api, getVariables("Api"));
-Object.assign(AppSyncApi, getVariables("AppSyncApi"));
-Object.assign(ApiGatewayV1Api, getVariables("ApiGatewayV1Api"));
-Object.assign(WebSocketApi, getVariables("WebSocketApi"));
+  /* @__PURE__ */ createProxy<ApiGatewayV1ApiResources>("ApiGatewayV1Api");
 
 /**
  * Create a new api handler that can be used to create an authenticated session.
@@ -49,7 +51,8 @@ export function useCookie(name: string) {
 }
 
 export const useBody = /* @__PURE__ */ Context.memo(() => {
-  const evt = useEvent("api");
+  const type = useContextType() as ApiHandlerTypes;
+  const evt = useEvent(type);
   if (!evt.body) return;
   const body = evt.isBase64Encoded
     ? Buffer.from(evt.body, "base64").toString()
@@ -146,7 +149,8 @@ export const useResponse = /* @__PURE__ */ Context.memo(() => {
 });
 
 export function useDomainName() {
-  const evt = useEvent("api");
+  const type = useContextType() as ApiHandlerTypes;
+  const evt = useEvent(type);
   return evt.requestContext.domainName;
 }
 
@@ -156,7 +160,8 @@ export function useMethod() {
 }
 
 export function useHeaders() {
-  const evt = useEvent("api");
+  const type = useContextType() as ApiHandlerTypes;
+  const evt = useEvent(type);
   return evt.headers || {};
 }
 
@@ -171,7 +176,8 @@ export function useFormValue(name: string) {
 }
 
 export function useQueryParams() {
-  const evt = useEvent("api");
+  const type = useContextType() as ApiHandlerTypes;
+  const evt = useEvent(type);
   const query = evt.queryStringParameters || {};
   return query;
 }

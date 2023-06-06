@@ -1,5 +1,4 @@
 ---
-id: astro
 sidebar_label: Astro
 title: Use Astro with SST
 description: "Create and deploy an Astro site to AWS with SST."
@@ -58,6 +57,7 @@ Now initialize SST in your project root.
 <TabItem value="npm">
 
 ```bash
+cd astro-project
 npx create-sst@latest
 ```
 
@@ -65,6 +65,7 @@ npx create-sst@latest
 <TabItem value="yarn">
 
 ```bash
+cd astro-project
 yarn create sst
 ```
 
@@ -72,6 +73,7 @@ yarn create sst
 <TabItem value="pnpm">
 
 ```bash
+cd astro-project
 pnpm create sst
 ```
 
@@ -130,9 +132,7 @@ Let's add a file upload feature to our Astro site.
 Add an S3 bucket to your `sst.config.ts`.
 
 ```ts title="sst.config.ts"
-const bucket = new Bucket(stack, "public", {
-  cors: true,
-});
+const bucket = new Bucket(stack, "public");
 ```
 
 Bind it to your Astro site.

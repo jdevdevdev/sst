@@ -15,7 +15,7 @@ Access the resources in your app in a secure and typesafe way.
 
 ## Overview
 
-**Resource Binding** allows you to connect your functions with your infrastructure. This is done in two steps:
+**Resource Binding** allows you to connect your infrastructure to your frontends and functions. This is done in two steps:
 
 1. Bind a resource to your frontend or API through the `bind` prop.
 2. Use the [`sst/node`](clients/index.md) package to access the resource in your function.
@@ -76,6 +76,12 @@ To follow along, you can create a new SST app by running `npx create-sst@latest`
    ```
 
    That's it!
+
+:::tip
+Since we are dealing with sensitive info, resource binding is only supported in the frontend's server side functions. To access these on the client side, [check out the section below](#client-side-environment-variables).
+:::
+
+While we are using the [`NextjsSite`](constructs/NextjsSite.md) in this example, resource binding is supported in all SST functions and SSR frontends. With the exception of the [`RemixSite`](constructs/RemixSite.md), since Remix does not fully support top-level await yet.
 
 ---
 
@@ -279,11 +285,71 @@ Config.MY_CLUSTER_NAME;
 
 ---
 
+## Client side access
+
+So far we've looked at how you can use the [`sst/node`](clients/index.md) client in your functions or in your frontend's server side functions. But there might be cases where you want to access something on the client side.
+
+To do this, you can pass props from the server functions to the client side. Using the example from above.
+
+```ts {4}
+export async function getServerSideProps() {
+  return {
+    props: {
+      bucketName: Bucket.public.bucketName,
+    },
+  };
+}
+```
+
+:::caution
+Be careful not to pass any secrets or sensitive info to the client.
+:::
+
+We can read the bucket name in the `getServerSideProps` function and pass it as a prop to our component.
+
+```ts {1}
+export default function Home({ bucketName }: { bucketName: string }) {
+  // Render component
+}
+```
+
+Alternatively, you can set directly set client side environment variables.
+
+---
+
+#### Client side environment variables
+
+However, Frontends (like Next.js, Remix, etc.) can read from an environment variable purely on the client side. SST supports setting these client side environment variables as well.
+
+This is useful if you have a completely static frontend and you want to pass in the outputs of other constructs in your SST app. Let's look at how.
+
+Imagine you have an S3 bucket created using the [`Bucket`](constructs/Bucket.md) construct, and you want to access the name of the bucket in your client side code. You can use the `environment` property in your [`NextjsSite`](constructs/NextjsSite.md) construct.
+
+```ts {4-6}
+const bucket = new Bucket(stack, "Bucket");
+
+new NextjsSite(stack, "Site", {
+  environment: {
+    NEXT_PUBLIC_BUCKET_NAME: bucket.bucketName,
+  },
+});
+```
+
+Now you can access the bucket's name in your client side code.
+
+```ts
+console.log(process.env.NEXT_PUBLIC_BUCKET_NAME);
+```
+
+In Next.js, only environment variables prefixed with `NEXT_PUBLIC_` are available in your client side code. [Read more about using environment variables](https://nextjs.org/docs/basic-features/environment-variables#exposing-environment-variables-to-the-browser).
+
+---
+
 ## How it works
 
 When a resource is bound to a Lambda function, the resource values are stored as environment variables for the function. In our example, the bucket name is stored as a Lambda environment variable named `SST_Bucket_bucketName_myBucket`.
 
-At runtime, the `sst/node/bucket` package reads the value `process.env.SST_Bucket_bucketName_myBucket` and makes it accessible via `Bucket.myBucket.bucketName`.
+At runtime, the `sst/node/bucket` package uses [top-level await](https://v8.dev/features/top-level-await) to read the value `process.env.SST_Bucket_bucketName_myBucket` and make it accessible via `Bucket.myBucket.bucketName`.
 
 SST also stores a copy of the bucket name in [AWS SSM](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html). In this case, an SSM parameter of the type `String` is created with the name `/sst/{appName}/{stageName}/Bucket/myBucket/bucketName`, where `{appName}` is the name of your SST app, and `{stageName}` is the stage. The parameter value is the name of the bucket stored in plain text.
 
@@ -293,13 +359,80 @@ Storing the bucket name in SSM might seem redundant. But it provides a convenien
 
 #### Binding sensitive values
 
-When binding resources that contain sensitive values, placeholders are stored in the Lambda environment variables. The actual values are stored inside SSM. At runtime, the values are fetched from SSM when the Lambda container first boots up. And the values are cached for subsequent invocations. This is similar to how [`Config.Secret`](config.md#secrets) works.
+When binding resources that contain sensitive values, placeholders are stored in the Lambda environment variables. The actual values are stored inside SSM. At runtime, the values are fetched from SSM when the Lambda container first boots up using top-level await. And the values are cached for subsequent invocations. This is similar to how [`Config.Secret`](config.md#secrets) works.
+
+---
+
+#### Typesafety
+
+When running `sst build`, `sst deploy`, or `sst dev`, types are generated for the defined resources and `Config` properties in the `.sst` directory.
+
+:::tip
+If you are using one of our starters, this should be done automatically for you.
+:::
+
+To use these types, place the following `sst-env.d.ts` file in any package that needs the types.
+
+```js title="sst-env.d.ts"
+/// <reference path="../.sst/types/index.ts" />
+```
+
+Make sure you specify the path to the `.sst` directory correctly. With this in place, your IDE should recognize the generated types and autocomplete them.
+
+---
+
+#### Client side environment variables
+
+On `sst deploy` client side environment variables will first be replaced by placeholder values, ie. `{{ NEXT_PUBLIC_BUCKET_NAME }}`, when building the Next.js app. And after the S3 bucket has been created, the placeholders in the HTML and JS files will then be replaced with the actual values.
+
+:::caution
+Since the actual values are determined at deploy time, you should not rely on the values at build time. For example, you cannot reference `process.env.NEXT_PUBLIC_BUCKET_NAME` inside `getStaticProps()` at build time.
+
+There are a couple of workarounds:
+
+- Hardcode the bucket name
+- Read the bucket name dynamically at build time (ie. from an SSM value)
+- Use [fallback pages](https://nextjs.org/docs/basic-features/data-fetching#fallback-pages) to generate the page on the fly
+
+:::
+
+Note that since edge functions don't support Lambda environment variables, the above token replace method is also used.
+
+---
+
+#### Working locally
+
+Resource binding works a little differently for the frontend sites because SST does not run them locally. Instead you wrap your frontend local dev command with `sst bind`. For example, you run `sst bind next dev` for Next.js.
+
+```json title="package.json" {2}
+"scripts": {
+  "dev": "sst bind next dev",
+  "build": "next build",
+  "start": "next start"
+},
+```
+
+Note that, `sst bind` only works if the Next.js app is located inside the SST app or inside one of its subdirectories. For example:
+
+```
+/
+  sst.config.ts
+  my-next-app/
+```
+
+There are a couple of things happening behind the scenes here:
+
+1. The `sst dev` command generates stores all the bound resources and environment variables in your AWS account as something called the _stack metadata_.
+2. The `sst bind` CLI loads these environment variables and sets them for your frontend's local development environment. It also gets an IAM role similar to the one that your SSR function will have when deployed.
+3. When you call `sst/node` in your frontend, it'll use the IAM role to fetch the resources you are trying to access from the _stack metadata_.
 
 ---
 
 ## Cost
 
 Resource Binding values are stored in AWS SSM with the _Standard Parameter type_ and _Standard Throughput_. This makes AWS SSM [free to use](https://aws.amazon.com/systems-manager/pricing/) in your SST apps. However when storing a `Config.Secret` the value is encrypted by AWS KMS. These are retrieved at runtime in your Lambda functions when it starts up. AWS KMS has a [free tier](https://aws.amazon.com/kms/pricing/#Free_tier) of 20,000 API calls per month. And it costs $0.03 for every 10,000 subsequent API calls. This is worth keeping in mind as these secrets are fetched per Lambda function cold start.
+
+---
 
 ## FAQ
 

@@ -42,7 +42,11 @@ import {
   Tracing,
 } from "aws-cdk-lib/aws-lambda";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
-import { Token, Size as CDKSize, Duration as CDKDuration } from "aws-cdk-lib";
+import {
+  Token,
+  Size as CDKSize,
+  Duration as CDKDuration,
+} from "aws-cdk-lib/core";
 import { Effect, PolicyStatement, Role } from "aws-cdk-lib/aws-iam";
 import { StringParameter } from "aws-cdk-lib/aws-ssm";
 import { useBootstrap } from "../bootstrap.js";
@@ -597,7 +601,7 @@ export interface FunctionCopyFilesProps {
  * @example
  *
  * ```js
- * import { Function } from "@serverless-stack/resources";
+ * import { Function } from "sst/constructs";
  *
  * new Function(stack, "MySnsLambda", {
  *   handler: "src/sns/index.main",
@@ -675,6 +679,7 @@ export class Function extends CDKFunction implements SSTConstruct {
         environment: props.environment,
         layers: Function.buildLayers(scope, id, props),
         logRetention,
+        logRetentionRetryOptions: logRetention && { maxRetries: 100 },
       });
     }
     // Handle local development (ie. sst start)
@@ -710,6 +715,7 @@ export class Function extends CDKFunction implements SSTConstruct {
         environment: props.environment,
         layers: [],
         logRetention,
+        logRetentionRetryOptions: logRetention && { maxRetries: 100 },
         retryAttempts: 0,
         ...(debugOverrideProps || {}),
       });
@@ -725,7 +731,9 @@ export class Function extends CDKFunction implements SSTConstruct {
           new PolicyStatement({
             actions: ["s3:*"],
             effect: Effect.ALLOW,
-            resources: [`arn:aws:s3:::${bootstrap.bucket}`],
+            resources: [
+              `arn:${Stack.of(this).partition}:s3:::${bootstrap.bucket}`,
+            ],
           }),
         ]);
       });
@@ -746,6 +754,7 @@ export class Function extends CDKFunction implements SSTConstruct {
         environment: props.environment,
         layers: Function.buildLayers(scope, id, props),
         logRetention,
+        logRetentionRetryOptions: logRetention && { maxRetries: 100 },
       });
 
       useDeferredTasks().add(async () => {
@@ -893,6 +902,7 @@ export class Function extends CDKFunction implements SSTConstruct {
       type: "Function" as const,
       data: {
         arn: this.functionArn,
+        handler: this.props.handler,
         localId: this.node.addr,
         secrets: this.allBindings
           .filter((c) => c instanceof Secret)
@@ -1127,7 +1137,9 @@ export const useFunctions = createAppContext(() => {
 
   return {
     fromID(id: string) {
-      return functions[id];
+      const result = functions[id];
+      if (!result) return;
+      return result;
     },
     add(name: string, props: FunctionProps) {
       functions[name] = props;

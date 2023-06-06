@@ -79,14 +79,18 @@ Here's the full list of config options that can be returned:
 - **`profile`** AWS profile to use\*
 - **`role`** AWS role to use\*
 - **`ssmPrefix`** SSM prefix for all SSM parameters that SST creates
-- **`bootstrap`**
-  - **`stackName`** The name of the SST bootstrap stack
-  - **`tags`** The tags to add for the SST bootstrap stack
+- **`advanced`**
+  - **`disableParameterizedStackNameCheck`** Disable the check for stack names to be parameterized with the stage name.
 - **`cdk`**
   - **`toolkitStackName`** The name of the CDK toolkit stack
   - **`qualifier`** The qualifier for the CDK toolkit stack
   - **`fileAssetsBucketName`** The name of the CDK toolkit bucket
   - **`publicAccessBlockConfiguration`** Block public access configuration on the CDK toolkit bucket
+  - **`deployRoleArn`**: IAM role used to initiate a deployment
+  - **`lookupRoleArn`** IAM role used to look up values from the AWS account
+  - **`fileAssetPublishingRoleArn`** IAM role used to publish file assets to the S3 bucket
+  - **`imageAssetPublishingRoleArn`** IAM role used to publish image assets to the ECR repository
+  - **`cloudFormationExecutionRole`** IAM role assumed by the CloudFormation to deploy
 
 \*These won't take effect if the CLI flag for it is specified.
 

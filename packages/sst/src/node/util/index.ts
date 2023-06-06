@@ -5,6 +5,12 @@ import {
 } from "@aws-sdk/client-ssm";
 const ssm = new SSMClient({ region: process.env.SST_REGION });
 
+interface Variable {
+  constructName: string;
+  constructId: string;
+  propName: string;
+}
+
 // Example:
 // {
 //   Bucket: {
@@ -19,16 +25,20 @@ let allVariables: Record<string, Record<string, Record<string, string>>> = {};
 //       https://discord.com/channels/983865673656705025/1089184080534446110
 const _placeholder = await parseEnvironment();
 
-interface Variable {
-  constructName: string;
-  constructId: string;
-  propName: string;
-}
-
 export function createProxy<T extends object>(constructName: string) {
-  return new Proxy<T>({} as any, {
+  const result = new Proxy<T>({} as any, {
     get(target, prop) {
       if (typeof prop === "string") {
+        // If SST_APP and SST_STAGE are not set, it is likely the
+        // user is using an older version of SST.
+        // Note: cannot run this check at the top level b/c SvelteKit
+        //       run code analysis after build. The code analysis runs
+        //       the top level code, and would fail b/c "SST_APP" and
+        //       "SST_STAGE" are undefined at build time.
+        if (!process.env.SST_APP) {
+          throw new Error(buildMissingBuiltInEnvError());
+        }
+
         // normalize prop to convert kebab cases like `my-table` to `my_table`
         const normProp = normalizeId(prop);
         if (!(normProp in target)) {
@@ -43,9 +53,11 @@ export function createProxy<T extends object>(constructName: string) {
       return Reflect.get(target, prop);
     },
   });
+  Object.assign(result, getVariables2(constructName));
+  return result;
 }
 
-export function getVariables(constructName: string) {
+export function getVariables2(constructName: string) {
   return allVariables[constructName] || {};
 }
 
@@ -124,7 +136,9 @@ async function fetchValuesFromSSM(variablesFromSsm: Variable[]) {
 
   if (missingSecrets.length > 0) {
     throw new Error(
-      `The following secrets were not found: ${missingSecrets.join(", ")}`
+      `The following secret values are not set in the "${
+        process.env.SST_STAGE
+      } stage": ${missingSecrets.join(", ")}`
     );
   }
 }
@@ -204,4 +218,28 @@ function storeVariable(variable: Variable, value: string) {
   allVariables[c] = allVariables[c] || {};
   allVariables[c][id] = allVariables[c][id] || {};
   allVariables[c][id][prop] = value;
+}
+
+function buildMissingBuiltInEnvError() {
+  // Build environment => building SSR sites
+  if (process.env.SST) {
+    return [
+      "",
+      `Cannot access bound resources. This usually happens if the "sst/node" package is used at build time. For example:`,
+      "",
+      `  - The "sst/node" package is used inside the "getStaticProps()" function of a Next.js app.`,
+      `  - The "sst/node" package is used at the top level outside of the "load()" function of a SvelteKit app.`,
+      "",
+      `Please wrap your build script with "sst bind". For example, "sst bind next build".`,
+      "",
+    ].join("\n");
+  }
+
+  // Lambda/CodeBuild environment => Function/Job or SSR function
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.CODEBUILD_BUILD_ARN) {
+    return `Cannot access bound resources. This usually happens if you are using an older version of SST. Please update SST to the latest version.`;
+  }
+
+  // Unknown environment => client-side code
+  return `Cannot access bound resources. This usually happens if the "sst/node" package is used on the client-side. Ensure that it's only called in your server functions.`;
 }

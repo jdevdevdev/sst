@@ -6,6 +6,7 @@ const PACKAGE_MATCH = [
   "aws-cdk",
   "@aws-cdk",
   "constructs",
+  "svelte-kit-sst",
   "solid-start-sst",
 ];
 
@@ -67,7 +68,15 @@ export const update = (program: Program) =>
             if (!PACKAGE_MATCH.some((x) => pkg.startsWith(x))) continue;
             const desired = (() => {
               // Both sst and astro-sst should be sharing the same version
-              if (["sst", "astro-sst"].includes(pkg)) return metadata.version;
+              if (
+                [
+                  "sst",
+                  "astro-sst",
+                  "svelte-kit-sst",
+                  "solid-start-sst",
+                ].includes(pkg)
+              )
+                return metadata.version;
               if (pkg === "constructs") return metadata.dependencies.constructs;
               if (pkg.endsWith("alpha"))
                 return metadata.dependencies["@aws-cdk/aws-apigatewayv2-alpha"];

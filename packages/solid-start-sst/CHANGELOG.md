@@ -1,5 +1,139 @@
 # solid-start-sst
 
+## 2.11.17
+
+## 2.11.16
+
+## 2.11.15
+
+## 2.11.14
+
+## 2.11.13
+
+## 2.11.12
+
+## 2.11.11
+
+## 2.11.10
+
+## 2.11.9
+
+## 2.11.8
+
+## 2.11.7
+
+## 2.11.6
+
+## 2.11.5
+
+## 2.11.4
+
+## 2.11.3
+
+## 2.11.2
+
+## 2.11.1
+
+## 2.11.0
+
+## 2.10.4
+
+## 2.10.3
+
+## 2.10.2
+
+## 2.10.1
+
+## 2.10.0
+
+## 2.9.0
+
+## 2.8.29
+
+## 2.8.28
+
+## 2.8.27
+
+## 2.8.26
+
+## 2.8.25
+
+## 2.8.24
+
+## 2.8.23
+
+## 2.8.22
+
+## 2.8.21
+
+## 2.8.20
+
+## 2.8.19
+
+## 2.8.18
+
+## 2.8.17
+
+### Patch Changes
+
+- [#2865](https://github.com/serverless-stack/sst/pull/2865) [`d27299b4d`](https://github.com/serverless-stack/sst/commit/d27299b4d94c370077b97722a4ef9c49ceb4b036) Thanks [@ShivamJoker](https://github.com/ShivamJoker)! - SolidStartSite: fix parsing CloudFront headers
+
+## 2.8.16
+
+## 2.8.15
+
+## 2.8.14
+
+## 2.8.13
+
+## 2.8.12
+
+## 2.8.11
+
+## 2.8.10
+
+## 2.8.9
+
+## 2.8.8
+
+## 2.8.7
+
+## 2.8.6
+
+## 2.8.5
+
+## 2.8.4
+
+## 2.8.3
+
+## 2.8.2
+
+## 2.8.1
+
+## 2.8.0
+
+## 2.7.2
+
+## 2.7.1
+
+## 2.7.0
+
+### Patch Changes
+
+- [#2753](https://github.com/serverless-stack/sst/pull/2753) [`823647bd7`](https://github.com/serverless-stack/sst/commit/823647bd7348aa94b6b23a68cedc94e756982b7e) Thanks [@alistairstead](https://github.com/alistairstead)! - Add types for solid-start-sst
+
+## 2.6.0
+
+## 2.5.8
+
+## 2.5.7
+
+## 2.5.6
+
+## 2.5.5
+
+## 2.5.4
+
 ## 2.5.3
 
 ## 2.5.2

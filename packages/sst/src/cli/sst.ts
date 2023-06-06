@@ -29,6 +29,7 @@ import { transform } from "./commands/transform.js";
 import { diff } from "./commands/diff.js";
 import { version } from "./commands/version.js";
 import { telemetry } from "./commands/telemetry.js";
+import { connect } from "./commands/connect.js";
 
 bootstrap(program);
 dev(program);
@@ -43,6 +44,7 @@ consoleCommand(program);
 diff(program);
 version(program);
 telemetry(program);
+connect(program);
 
 if ("setSourceMapsEnabled" in process) {
   // @ts-expect-error
@@ -62,7 +64,7 @@ process.on("uncaughtException", (err) => {
   }
   console.log();
   console.log(
-    `Need help with this error? Join the SST community on Discord ${blue(
+    `Need help with this error? Post it in #help on the SST Discord ${blue(
       `https://sst.dev/discord`
     )}`
   );
